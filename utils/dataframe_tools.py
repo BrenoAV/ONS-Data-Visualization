@@ -1,16 +1,54 @@
-# !/usr/bin/env python
 # Author: BrenoAV
 """
 Module to perform operations of dataframe manipulation
 """
 
-import pandas as pd
-import numpy as np
+import datetime
 import logging
+import os
+import pathlib
+from pathlib import Path
 
-"""
-TODO: Create a function for transform the raw data from ONS Dados Abertos into a valid format
-"""
+import pandas as pd
+
+
+def create_pivot_table_load_energy(
+    file_path_str: str, sep: str = ";", encoding: str = "utf-8"
+) -> pd.DataFrame:
+    """Read a csv file and create a pivot table
+
+    Parameters
+    ----------
+    file_path_str: str
+        file path of the csv file
+    sep: str
+        Separator used in the CSV file. Defaults to ";"
+    encoding: str
+        Encoding used in the CSV file. Defaults to "utf-8"
+
+    Returns
+    -------
+    df_pivot: pd.DataFrame
+        A pivot table based on the CSV file.
+
+    """
+    file_path = Path(file_path_str)
+    if file_path.exists():
+        df = pd.read_csv(file_path, sep=sep, encoding=encoding)
+    else:
+        return pd.DataFrame()
+    try:
+        df_pivot = df.pivot_table(
+            values=["val_cargaenergiamwmed"],
+            index=["din_instante"],
+            columns=["id_subsistema", "nom_subsistema"],
+        )
+        return df_pivot
+    except KeyError as e:
+        logging.exception(
+            f"Error: {e}. Please check if the input CSV file contains the expected columns"
+        )
+        raise
 
 
 def replace_zero_negative(
@@ -80,3 +118,82 @@ def data_clean(df: pd.DataFrame) -> pd.DataFrame:
     df_copy = replace_zero_negative(df_copy)
     logging.info("DataFrame cleaned!")
     return df_copy
+
+
+def save_csv(
+    df: pd.DataFrame, path_to_save: pathlib.Path, filename: str, index: bool = True
+) -> None:
+    """Save dataframe in a csv file
+
+    Parameters
+    ----------
+    df : pd.DataFrame
+        Dataframe to be saved
+    path_to_save : pathlib.Path
+        A directory for saving the file, if doesn't exist will be created
+    filename : str
+        csv filename
+    index : bool
+        If is False will not save the index, by default True
+    """
+    path_to_save.mkdir(exist_ok=True, parents=True)
+    df.to_csv(
+        os.path.join(path_to_save, filename + ".csv"),
+        sep=",",
+        encoding="utf-8",
+        index=index,
+    )
+    logging.info(f"Dataframe {os.path.join(path_to_save, f'{filename}.csv')} saved!")
+
+
+def check_date_range_energy_load(
+    df_series: pd.DatetimeIndex, start_year: int, end_year: int
+) -> bool:
+    """Compare the series of date range to check if the interval is correct
+
+    Parameters
+    ----------
+    df_series : pd.DatetimeIndex
+        Series to be compared with the range of years specified
+    start_year : int
+        The year to start the range (monthly)
+    end_year : int
+        The year to end the range (monthly)
+
+    Returns
+    -------
+    bool
+        True if the df_series has the correct date range
+
+    Raises
+    ------
+    TypeError
+        if df_series is not a Pandas DatetimeIndex
+    TypeError
+        if start_year is not an integer
+    TypeError
+        if end_year is not an integer
+    ValueError
+        if start_year is greater than end_year
+    ValueError
+        if date range comparasion fails
+    """
+    if not isinstance(df_series, pd.DatetimeIndex):
+        raise TypeError("df must be a pandas DatetimeIndex")
+    if not isinstance(start_year, int):
+        raise TypeError("start_year must be an integer")
+    if not isinstance(end_year, int):
+        raise TypeError("end_year must be an integer")
+
+    if end_year < start_year:
+        raise ValueError(
+            "start_year must be an integer equal to or lower than end_year"
+        )
+
+    start_date = datetime.date(start_year, 1, 1)
+    end_date = datetime.date(end_year, 12, 31)
+    date_range = pd.date_range(start=start_date, end=end_date)
+    try:
+        return (df_series == date_range).any()
+    except ValueError as e:
+        raise ValueError("Failed to compare date rangers.") from e

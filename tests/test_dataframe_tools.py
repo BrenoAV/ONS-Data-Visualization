@@ -1,10 +1,26 @@
+# Author: BrenoAV
+# -*- coding: utf-8 -*-
+
+import os
 import unittest
-import pandas as pd
+from pathlib import Path
+from shutil import rmtree
+
 import numpy as np
-from utils.dataframe_tools import data_clean, replace_zero_negative
+import pandas as pd
+from pandas.testing import assert_frame_equal
+
+from utils.dataframe_tools import (
+    create_pivot_table_load_energy,
+    data_clean,
+    replace_zero_negative,
+    save_csv,
+)
 
 
 class TestDataClean(unittest.TestCase):
+    """Test Class"""
+
     def setUp(self):
         self.df = pd.DataFrame({"A": [1, 2, np.nan, 4], "B": [np.nan, 6, 7, 8]})
 
@@ -27,6 +43,8 @@ class TestDataClean(unittest.TestCase):
 
 
 class TestZeroNegative(unittest.TestCase):
+    """Test Class"""
+
     def setUp(self):
         self.df = pd.DataFrame({"A": [1, -2, 0, 3], "B": [0, 6, 7, -8]})
 
@@ -68,6 +86,99 @@ class TestZeroNegative(unittest.TestCase):
 
         # assert that the shape is the same
         self.assertEqual(df_replaced.shape, self.df.shape)
+
+
+class TestFileOperations(unittest.TestCase):
+    """Test Class"""
+
+    def setUp(self):
+        self.filepath = Path("tmp")
+        self.filename = "tmp"
+        self.df = pd.DataFrame({"col1": [1, 2], "B": ["foo", "bar"]})
+
+    def test_save_csv_file_creation(self):
+        # creating a mock csv
+        save_csv(self.df, self.filepath, self.filename)
+        # Assert that the file was created
+        self.assertTrue(os.path.isfile(os.path.join(self.filepath, self.filename)))
+
+        df_loaded = pd.read_csv(
+            os.path.join(self.filepath, self.filename), sep=",", encoding="utf-8"
+        )
+
+        # Assert that the content of the file is equals to original
+        self.assertTrue(self.df.equals(df_loaded))
+
+        # Deleting tmp files (mock files)
+        if self.filepath is not os.getcwd():
+            rmtree(self.filepath)
+        else:
+            if os.path.exists(self.filename):
+                os.remove(self.filename)
+
+
+class TestCreatePivotTableLoadEnergy(unittest.TestCase):
+    """Test Class"""
+
+    def setUp(self):
+        self.tmp_dir = Path("tmp")
+        self.tmp_dir.mkdir(exist_ok=True)
+
+    def _create_valid_sample_csv(self, file_path):
+        data = {
+            "id_subsistema": ["N", "NE"],
+            "nom_subsistema": ["Norte", "Nordeste"],
+            "din_instante": ["2030-01-04", "2030-01-04"],
+            "val_cargaenergiamwmed": [450000, 500000],
+        }
+        df = pd.DataFrame(data)
+        df.to_csv(file_path, sep=";", index=False, encoding="utf-8")
+
+    def _create_invalid_sample_csv(self, file_path):
+        data = {
+            "iD_subsistema": ["N", "NE"],
+            "A": ["Norte", "Nordeste"],
+            "din_instante": ["2030-01-04", "2030-01-04"],
+            "val_cargaenergiamwmed": [450000, 500000],
+        }
+        df = pd.DataFrame(data)
+        df.to_csv(file_path, sep=";", index=False, encoding="utf-8")
+
+    def test_create_pivot_table_load_energy_with_valid_csv(self):
+        file_path = os.path.join(self.tmp_dir, "valid.csv")
+        self._create_valid_sample_csv(file_path)
+        expected_output = pd.DataFrame(
+            data={
+                ("val_cargaenergiamwmed", "N", "Norte"): 450000,
+                ("val_cargaenergiamwmed", "NE", "Nordeste"): 500000,
+            },
+            index=pd.Index(data=["2030-01-04"], dtype="object", name="din_instante"),
+            columns=pd.MultiIndex.from_tuples(
+                [
+                    ("val_cargaenergiamwmed", "N", "Norte"),
+                    ("val_cargaenergiamwmed", "NE", "Nordeste"),
+                ],
+                names=[None, "id_subsistema", "nom_subsistema"],
+            ),
+        )
+        df_out = create_pivot_table_load_energy(file_path)
+        # Assert that the two dataframes are equals after the function
+        assert_frame_equal(df_out, expected_output)
+
+    def test_create_pivot_table_load_energy_with_non_exists_csv(self):
+        file_path = os.path.join(self.tmp_dir, "non_exists.csv")
+        df_output = create_pivot_table_load_energy(file_path)
+        # Assert a empty dataframe when the file path dosn't exist
+        self.assertTrue(df_output.empty)
+
+    def test_create_pivot_table_load_energy_invalid_columns(self):
+        file_path = os.path.join(self.tmp_dir, "invalid_columns.csv")
+        self._create_invalid_sample_csv(file_path)
+        # Assert that with a invalid column returns a KeyError exception
+        self.assertRaises(KeyError, create_pivot_table_load_energy, file_path)
+
+    def tearDown(self):
+        rmtree(self.tmp_dir)
 
 
 if __name__ == "__main__":
