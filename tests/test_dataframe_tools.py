@@ -1,6 +1,8 @@
 # Author: BrenoAV
 # -*- coding: utf-8 -*-
+""" utils -> dataframe_tools tests """
 
+import datetime
 import os
 import unittest
 from pathlib import Path
@@ -11,6 +13,7 @@ import pandas as pd
 from pandas.testing import assert_frame_equal
 
 from utils.dataframe_tools import (
+    check_date_range_energy_load,
     create_pivot_table_load_energy,
     data_clean,
     replace_zero_negative,
@@ -92,29 +95,29 @@ class TestFileOperations(unittest.TestCase):
     """Test Class"""
 
     def setUp(self):
-        self.filepath = Path("tmp")
-        self.filename = "tmp"
+        self.tmp_dir = Path("tmp")
+        self.filename = "filename"
         self.df = pd.DataFrame({"col1": [1, 2], "B": ["foo", "bar"]})
 
     def test_save_csv_file_creation(self):
         # creating a mock csv
-        save_csv(self.df, self.filepath, self.filename)
+        save_csv(self.df, self.tmp_dir, self.filename, index=False)
         # Assert that the file was created
-        self.assertTrue(os.path.isfile(os.path.join(self.filepath, self.filename)))
+        self.assertTrue(
+            os.path.isfile(os.path.join(self.tmp_dir, self.filename + ".csv"))
+        )
 
         df_loaded = pd.read_csv(
-            os.path.join(self.filepath, self.filename), sep=",", encoding="utf-8"
+            os.path.join(self.tmp_dir, self.filename + ".csv"),
+            sep=",",
+            encoding="utf-8",
         )
 
         # Assert that the content of the file is equals to original
         self.assertTrue(self.df.equals(df_loaded))
 
-        # Deleting tmp files (mock files)
-        if self.filepath is not os.getcwd():
-            rmtree(self.filepath)
-        else:
-            if os.path.exists(self.filename):
-                os.remove(self.filename)
+    def tearDown(self):
+        rmtree(self.tmp_dir)
 
 
 class TestCreatePivotTableLoadEnergy(unittest.TestCase):
@@ -123,62 +126,110 @@ class TestCreatePivotTableLoadEnergy(unittest.TestCase):
     def setUp(self):
         self.tmp_dir = Path("tmp")
         self.tmp_dir.mkdir(exist_ok=True)
-
-    def _create_valid_sample_csv(self, file_path):
-        data = {
-            "id_subsistema": ["N", "NE"],
-            "nom_subsistema": ["Norte", "Nordeste"],
-            "din_instante": ["2030-01-04", "2030-01-04"],
-            "val_cargaenergiamwmed": [450000, 500000],
-        }
-        df = pd.DataFrame(data)
-        df.to_csv(file_path, sep=";", index=False, encoding="utf-8")
-
-    def _create_invalid_sample_csv(self, file_path):
-        data = {
-            "iD_subsistema": ["N", "NE"],
-            "A": ["Norte", "Nordeste"],
-            "din_instante": ["2030-01-04", "2030-01-04"],
-            "val_cargaenergiamwmed": [450000, 500000],
-        }
-        df = pd.DataFrame(data)
-        df.to_csv(file_path, sep=";", index=False, encoding="utf-8")
-
-    def test_create_pivot_table_load_energy_with_valid_csv(self):
-        file_path = os.path.join(self.tmp_dir, "valid.csv")
-        self._create_valid_sample_csv(file_path)
-        expected_output = pd.DataFrame(
+        self.df_valid = pd.DataFrame(
             data={
-                ("val_cargaenergiamwmed", "N", "Norte"): 450000,
-                ("val_cargaenergiamwmed", "NE", "Nordeste"): 500000,
-            },
-            index=pd.Index(data=["2030-01-04"], dtype="object", name="din_instante"),
-            columns=pd.MultiIndex.from_tuples(
-                [
-                    ("val_cargaenergiamwmed", "N", "Norte"),
-                    ("val_cargaenergiamwmed", "NE", "Nordeste"),
+                "id_subsistema": ["N", "NE", "S", "SE"],
+                "nom_subsistema": ["Norte", "Nordeste", "Sul", "Sudeste/Centro-Oeste"],
+                "din_instante": [
+                    "2030-01-01",
+                    "2030-01-01",
+                    "2030-01-01",
+                    "2030-01-01",
                 ],
-                names=[None, "id_subsistema", "nom_subsistema"],
-            ),
+                "val_cargaenergiamwmed": [50000, 60000, 70000, 100000],
+            }
         )
-        df_out = create_pivot_table_load_energy(file_path)
-        # Assert that the two dataframes are equals after the function
-        assert_frame_equal(df_out, expected_output)
+        self.df_invalid = pd.DataFrame(
+            data={
+                "ida_subsistema": ["N", "NE", "S", "SE"],
+                "nom_subsistema": ["Norte", "Nordeste", "sul", "Sudeste/Centro-Oeste"],
+                "din_instante": [
+                    "2030-01-01",
+                    "2030-01-01",
+                    "2030-01-01",
+                    "2030-01-01",
+                ],
+                "val_cargaenergiamwmed": [50000, 60000, 70000, 100000],
+            }
+        )
 
-    def test_create_pivot_table_load_energy_with_non_exists_csv(self):
-        file_path = os.path.join(self.tmp_dir, "non_exists.csv")
-        df_output = create_pivot_table_load_energy(file_path)
-        # Assert a empty dataframe when the file path dosn't exist
-        self.assertTrue(df_output.empty)
+    def test_create_pivot_table_load_energy_valid(self):
+        df_output = create_pivot_table_load_energy(self.df_valid)
+        tuples_expected = [
+            ("val_cargaenergiamwmed", "N", "Norte"),
+            ("val_cargaenergiamwmed", "NE", "Nordeste"),
+            ("val_cargaenergiamwmed", "S", "Sul"),
+            ("val_cargaenergiamwmed", "SE", "Sudeste/Centro-Oeste"),
+        ]
+        columns_expected = pd.MultiIndex.from_tuples(
+            tuples_expected, names=[None, "id_subsistema", "nom_subsistema"]
+        )
+        data_expected = [[50000, 60000, 70000, 100000]]
+        df_expected = pd.DataFrame(
+            data_expected, columns=columns_expected, index=["2030-01-01"]
+        )
+        df_expected.index.name = "din_instante"
+
+        assert_frame_equal(df_output, df_expected)
 
     def test_create_pivot_table_load_energy_invalid_columns(self):
-        file_path = os.path.join(self.tmp_dir, "invalid_columns.csv")
-        self._create_invalid_sample_csv(file_path)
-        # Assert that with a invalid column returns a KeyError exception
-        self.assertRaises(KeyError, create_pivot_table_load_energy, file_path)
+        self.assertRaises(KeyError, create_pivot_table_load_energy, self.df_invalid)
 
     def tearDown(self):
         rmtree(self.tmp_dir)
+
+
+class TestCheckDateRangeEnergyLoad(unittest.TestCase):
+    def setUp(self):
+        self.start_date = datetime.date(2030, 1, 1)
+        self.end_date = datetime.date(2030, 1, 7)
+        self.date_range_valid = pd.DatetimeIndex(
+            [
+                "2030-01-01",
+                "2030-01-02",
+                "2030-01-03",
+                "2030-01-04",
+                "2030-01-05",
+                "2030-01-06",
+                "2030-01-07",
+            ]
+        )
+        self.date_range_invalid = pd.DatetimeIndex(
+            [
+                "2030-01-01",
+                "2030-01-03",
+                "2030-01-04",
+                "2030-01-05",
+                "2030-01-06",
+                "2030-01-07",
+                "2030-01-07",
+            ]
+        )
+
+    def test_check_date_range_energy_load_valid_date(self):
+        self.assertTrue(
+            check_date_range_energy_load(
+                self.date_range_valid, self.start_date, self.end_date
+            )
+        )
+
+    def test_check_date_range_energy_load_invalid_date(self):
+        self.assertFalse(
+            check_date_range_energy_load(
+                self.date_range_invalid, self.start_date, self.end_date
+            )
+        )
+
+    def test_check_date_range_energy_load_invalid_size(self):
+        # assert that if the date range is less than expected range using the start_date
+        # and end_date raises a error
+        self.assertRaises(
+            ValueError,
+            check_date_range_energy_load,
+            self.date_range_invalid[:-2],
+            self.start_date,
+            self.end_date,
+        )
 
 
 if __name__ == "__main__":

@@ -7,38 +7,30 @@ import datetime
 import logging
 import os
 import pathlib
-from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 
-def create_pivot_table_load_energy(
-    file_path_str: str, sep: str = ";", encoding: str = "utf-8"
-) -> pd.DataFrame:
-    """Read a csv file and create a pivot table
+def create_pivot_table_load_energy(df_raw: pd.DataFrame) -> pd.DataFrame:
+    """Create a load energy pivot table
 
     Parameters
     ----------
-    file_path_str: str
-        file path of the csv file
-    sep: str
-        Separator used in the CSV file. Defaults to ";"
-    encoding: str
-        Encoding used in the CSV file. Defaults to "utf-8"
+    df_raw : pd.DataFrame
+        A raw DataFrame with the columns: "val_cargaenergiamwmed",
+                                          "din_instante",
+                                          "id_subsistema",
+                                          "nom_subsistema"
 
     Returns
     -------
     df_pivot: pd.DataFrame
-        A pivot table based on the CSV file.
+        A pivot table based on the CSV file
 
     """
-    file_path = Path(file_path_str)
-    if file_path.exists():
-        df = pd.read_csv(file_path, sep=sep, encoding=encoding)
-    else:
-        return pd.DataFrame()
     try:
-        df_pivot = df.pivot_table(
+        df_pivot = df_raw.pivot_table(
             values=["val_cargaenergiamwmed"],
             index=["din_instante"],
             columns=["id_subsistema", "nom_subsistema"],
@@ -147,53 +139,55 @@ def save_csv(
 
 
 def check_date_range_energy_load(
-    df_series: pd.DatetimeIndex, start_year: int, end_year: int
+    df_datetime_index: pd.DatetimeIndex,
+    start_date: datetime.date,
+    end_date: datetime.date,
 ) -> bool:
-    """Compare the series of date range to check if the interval is correct
+    """Check if the range of the date between the min and max date are correctly
 
     Parameters
     ----------
-    df_series : pd.DatetimeIndex
-        Series to be compared with the range of years specified
-    start_year : int
-        The year to start the range (monthly)
-    end_year : int
-        The year to end the range (monthly)
+    df_datetime_index : pd.DatetimeIndex
+        Series DateTimeIndex to be evaluated if the values are correctly (date range)
+    start_date : datetime.date
+        start date to create a range of date
+    end_date : datetime.date
+        end date to create a range of date
 
     Returns
     -------
     bool
-        True if the df_series has the correct date range
+        True if the values are correct or False, otherwise
 
     Raises
     ------
     TypeError
-        if df_series is not a Pandas DatetimeIndex
+        Check if df_date_time_index is a DatetimeIndex valid
     TypeError
-        if start_year is not an integer
+        Check if start_date is a valid datetime.date
     TypeError
-        if end_year is not an integer
+        Check if end_date is a valid datetime.date
     ValueError
-        if start_year is greater than end_year
+        raise if the end_date is before the start_date
     ValueError
-        if date range comparasion fails
+        raise if the datetime has no same size that the specified range
     """
-    if not isinstance(df_series, pd.DatetimeIndex):
-        raise TypeError("df must be a pandas DatetimeIndex")
-    if not isinstance(start_year, int):
-        raise TypeError("start_year must be an integer")
-    if not isinstance(end_year, int):
-        raise TypeError("end_year must be an integer")
+    if not isinstance(df_datetime_index, pd.DatetimeIndex):
+        raise TypeError("df_datetime_index must be a pandas DatetimeIndex")
+    if not isinstance(start_date, datetime.date):
+        raise TypeError("start_date must be an datetime.date")
+    if not isinstance(end_date, datetime.date):
+        raise TypeError("end_date must be an datetime.date")
 
-    if end_year < start_year:
+    if end_date < start_date:
         raise ValueError(
-            "start_year must be an integer equal to or lower than end_year"
+            "start_date must be an integer equal to or lower than end_date"
         )
 
-    start_date = datetime.date(start_year, 1, 1)
-    end_date = datetime.date(end_year, 12, 31)
     date_range = pd.date_range(start=start_date, end=end_date)
     try:
-        return (df_series == date_range).any()
+        return np.all((df_datetime_index == date_range) == True)
     except ValueError as e:
-        raise ValueError("Failed to compare date rangers.") from e
+        raise ValueError(
+            f"Failed to compare date ranges. {len(df_datetime_index)} != {len(date_range)} "
+        ) from e
