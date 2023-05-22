@@ -1,6 +1,6 @@
-# Dash Visualization Demo
+# ONS Dash Visualization
 
-This (simple) repository is designated for my studies and application of Dash (Plotty) for the purpose of data visualization. I'm using data from [Load Energy Daily](https://dados.ons.org.br/dataset/carga-energia) provided by ONS. You can see a simple definition of Load Curves here: [What are Load Curves?](https://www.tutorialspoint.com/what-are-load-curves)
+This (simple) repository is designated for my studies and application of Dash (Plotty) for the purpose of data visualization. I'm using data from [ONS OPEN DATA](https://dados.ons.org.br/) provided by ONS (Operador Nacional do Sistema Elétrico).
 
 <p align="center">
 <img src="src/dash-demo.png" alt="Dash application opened on the browser and running">
@@ -87,3 +87,7 @@ $ python -m unittest discover tests/
 <p align="center">
   <sub>Created by BrenoAV</sub>
 </p>
+
+# TODO
+
+- [ ] Add others data
